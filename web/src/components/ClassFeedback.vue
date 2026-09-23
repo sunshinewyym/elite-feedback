@@ -23,36 +23,77 @@
 
           <div class="fb-form">
         <div class="form-row">
-          <label for="feedback-course">课程类别</label>
-          <select id="feedback-course" v-model="courseType">
-            <option value="cpp">C++</option>
-            <option value="robotics">机器人</option>
-            <option value="graphical">图形化编程</option>
-            <option value="python">Python</option>
-          </select>
+          <label>课程类别</label>
+          <div class="course-type-row" role="tablist" aria-label="课程类别">
+            <button
+              v-for="c in COURSE_OPTIONS"
+              :key="c.id"
+              type="button"
+              class="course-type-btn"
+              :class="{ active: courseType === c.id }"
+              @click="courseType = c.id"
+            >
+              {{ c.label }}
+            </button>
+          </div>
         </div>
 
-        <div v-if="courseType === 'cpp'" class="form-row">
-          <label for="cpp-track">C++ 课程阶段</label>
-          <select id="cpp-track" v-model="cppTrack">
-            <option value="">请选择阶段</option>
-            <option v-for="t in CPP_TRACKS" :key="t.id" :value="t.id">
+        <div v-if="showTrackPicker" class="form-row">
+          <label>{{ trackPickerLabel }}</label>
+          <div class="course-type-row" role="tablist" aria-label="课程阶段">
+            <button
+              v-for="t in stageTracks"
+              :key="t.id"
+              type="button"
+              class="course-type-btn"
+              :class="{ active: cppTrack === t.id }"
+              @click="cppTrack = t.id"
+            >
               {{ t.label }}
-            </option>
-            <option value="other">其他</option>
-          </select>
-          <p v-if="currentTrack" class="track-hint">{{ currentTrack.description }}</p>
-          <p v-else-if="cppTrack === 'other'" class="track-hint">不绑定固定课表，请直接填写上课主题。</p>
+            </button>
+            <button
+              type="button"
+              class="course-type-btn"
+              :class="{ active: cppTrack === 'other' }"
+              @click="cppTrack = 'other'"
+            >
+              其他
+            </button>
+          </div>
         </div>
 
-        <div v-if="courseType === 'cpp' && cppTrack && cppTrack !== 'other'" class="form-row">
-          <label for="cpp-lesson">选择课程主题</label>
-          <select id="cpp-lesson" v-model="lessonIndex">
-            <option value="" disabled>请选择课程主题</option>
-            <option v-for="les in trackLessons" :key="les.index" :value="les.index">
-              {{ shortTopicName(les.name) }}
-            </option>
-          </select>
+        <div v-if="showTrackPicker && cppTrack && cppTrack !== 'other'" class="form-row">
+          <label for="cpp-lesson-search">选择课程主题</label>
+          <div ref="lessonPickerRef" class="lesson-picker">
+            <input
+              id="cpp-lesson-search"
+              v-model="lessonQuery"
+              class="lesson-search"
+              type="text"
+              autocomplete="off"
+              :placeholder="selectedLesson ? `${selectedLesson.index}. ${shortTopicName(selectedLesson.name)}` : '输入关键词搜索'"
+              @focus="openLessonPicker"
+              @input="onLessonQueryInput"
+            />
+            <div v-if="lessonPickerOpen" class="lesson-options">
+              <p v-if="!filteredLessons.length" class="lesson-options-empty">没有匹配的课程</p>
+              <button
+                v-for="les in filteredLessons"
+                :key="les.index"
+                type="button"
+                class="lesson-option"
+                :class="{ active: selectedLesson && selectedLesson.index === les.index }"
+                @mousedown.prevent="pickLesson(les)"
+              >
+                <span class="lesson-option-title">{{ les.index }}. {{ shortTopicName(les.name) }}</span>
+                <span
+                  v-if="les.name && les.name !== shortTopicName(les.name)"
+                  class="lesson-option-name"
+                >{{ les.name }}</span>
+              </button>
+            </div>
+          </div>
+          <p v-if="selectedLesson" class="track-hint">已选：{{ selectedLesson.index }}. {{ shortTopicName(selectedLesson.name) }}</p>
         </div>
 
         <section v-if="selectedLesson" class="lesson-objectives">
@@ -148,7 +189,7 @@
           <p v-if="imageMsg" class="image-msg">{{ imageMsg }}</p>
         </div>
 
-        <button class="gen-btn" @click="generate" :disabled="generating || !topic || !performance || !studentName.trim()">
+        <button class="gen-btn" @click="generate" :disabled="generating || !canGenerate">
           {{ generating ? '生成中……' : '✨ 生成课后反馈' }}
         </button>
           </div>
@@ -219,19 +260,30 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import html2canvas from 'html2canvas';
 import { generateFeedback } from '../utils/stream.js';
 import { CPP_TRACKS, lessonsOfTrack, shortTopicName } from '../data/cppCourses.js';
+import { GRAPHICAL_TRACKS, graphicalLessonsOfTrack } from '../data/graphicalCourses.js';
+import { ROBOTICS_TRACKS, roboticsLessonsOfTrack } from '../data/roboticsCourses.js';
 
 const STYLE_STORAGE_PREFIX = 'class-feedback-style:';
 
 const COURSE_NAMES = {
-  cpp: 'C++',
+  l1: 'L1 课程',
   robotics: '机器人',
-  graphical: '图形化编程',
+  graphical: '图形化',
   python: 'Python',
+  cpp: 'C++',
 };
+
+const COURSE_OPTIONS = [
+  { id: 'l1', label: 'L1 课程' },
+  { id: 'robotics', label: '机器人' },
+  { id: 'graphical', label: '图形化' },
+  { id: 'python', label: 'Python' },
+  { id: 'cpp', label: 'C++' },
+];
 
 const DEFAULT_STYLES = {
   cpp: `【输出模板】
@@ -277,7 +329,7 @@ const DEFAULT_STYLES = {
 3. 可以适量使用 emoji 点缀，但不要强加、不要堆砌，全篇不超过 3 个。`,
 };
 
-const courseType = ref('cpp');
+const courseType = ref('');
 const cppTrack = ref('');
 const lessonIndex = ref('');
 const studentName = ref('');
@@ -304,18 +356,98 @@ const exportCardEl = ref(null);
 
 const courseLabel = computed(() => {
   const base = COURSE_NAMES[courseType.value] || '课后反馈';
-  if (courseType.value === 'cpp' && currentTrack.value) {
+  if (showTrackPicker.value && currentTrack.value) {
     return `${base} · ${currentTrack.value.label}`;
   }
   return base;
 });
 
-const currentTrack = computed(() => CPP_TRACKS.find((t) => t.id === cppTrack.value) || null);
-const trackLessons = computed(() => (cppTrack.value && cppTrack.value !== 'other' ? lessonsOfTrack(cppTrack.value) : []));
+const stageTracks = computed(() => {
+  if (courseType.value === 'cpp') return CPP_TRACKS;
+  if (courseType.value === 'graphical') return GRAPHICAL_TRACKS;
+  if (courseType.value === 'robotics') return ROBOTICS_TRACKS;
+  return [];
+});
+const showTrackPicker = computed(
+  () => courseType.value === 'cpp' || courseType.value === 'graphical' || courseType.value === 'robotics'
+);
+const trackPickerLabel = computed(() => {
+  if (courseType.value === 'cpp') return 'C++ 课程阶段';
+  if (courseType.value === 'graphical') return '图形化课程阶段';
+  if (courseType.value === 'robotics') return '机器人课程阶段';
+  return '课程阶段';
+});
+const currentTrack = computed(() => stageTracks.value.find((t) => t.id === cppTrack.value) || null);
+const trackLessons = computed(() => {
+  if (!cppTrack.value || cppTrack.value === 'other') return [];
+  if (courseType.value === 'cpp') return lessonsOfTrack(cppTrack.value);
+  if (courseType.value === 'graphical') return graphicalLessonsOfTrack(cppTrack.value);
+  if (courseType.value === 'robotics') return roboticsLessonsOfTrack(cppTrack.value);
+  return [];
+});
 const selectedLesson = computed(() => {
   if (!cppTrack.value || cppTrack.value === 'other' || lessonIndex.value === '' || lessonIndex.value === null) return null;
   const idx = Number(lessonIndex.value);
   return trackLessons.value.find((les) => les.index === idx) || null;
+});
+
+// 课程主题搜索
+const lessonQuery = ref('');
+const lessonPickerOpen = ref(false);
+const lessonPickerRef = ref(null);
+
+const filteredLessons = computed(() => {
+  const q = lessonQuery.value.trim().toLowerCase();
+  if (!q) return trackLessons.value;
+  return trackLessons.value.filter((les) => {
+    const short = shortTopicName(les.name).toLowerCase();
+    return (
+      String(les.index).includes(q) ||
+      short.includes(q) ||
+      les.name.toLowerCase().includes(q) ||
+      String(les.objectives || '').toLowerCase().includes(q) ||
+      String(les.unit || '').toLowerCase().includes(q)
+    );
+  });
+});
+
+function openLessonPicker() {
+  lessonPickerOpen.value = true;
+}
+
+function onLessonQueryInput() {
+  lessonPickerOpen.value = true;
+  if (selectedLesson.value && lessonQuery.value.trim() !== shortTopicName(selectedLesson.value.name)) {
+    lessonIndex.value = '';
+  }
+}
+
+function pickLesson(lesson) {
+  lessonIndex.value = lesson.index;
+  lessonQuery.value = shortTopicName(lesson.name);
+  lessonPickerOpen.value = false;
+}
+
+function onDocClick(event) {
+  if (!lessonPickerRef.value?.contains(event.target)) {
+    lessonPickerOpen.value = false;
+  }
+}
+
+onMounted(() => document.addEventListener('mousedown', onDocClick));
+onUnmounted(() => document.removeEventListener('mousedown', onDocClick));
+
+watch(cppTrack, () => {
+  lessonIndex.value = '';
+  lessonQuery.value = '';
+  lessonPickerOpen.value = false;
+});
+
+watch(selectedLesson, (lesson) => {
+  if (lesson) {
+    topic.value = shortTopicName(lesson.name) || lesson.name;
+    lessonQuery.value = shortTopicName(lesson.name);
+  }
 });
 
 function formatObjectives(text) {
@@ -450,17 +582,23 @@ async function exportCard() {
 const topicPlaceholder = computed(
   () =>
     ({
+      '': '请先选择课程类别',
+      l1: '例如：认识顺序结构、趣味小项目',
       cpp: '例如：String 类、字符串应用',
       robotics: '例如：传感器与循线任务',
       graphical: '例如：角色运动与条件判断',
       python: '例如：列表与循环',
-    })[courseType.value]
+    })[courseType.value] || '请先选择课程类别'
 );
 
 const performancePlaceholder = computed(() =>
   courseType.value === 'cpp'
     ? '描述学生表现，例如：思路清晰、能独立完成练习、遇到困难时如何处理'
     : '描述课堂上实际观察到的操作、思考、合作及需要改进的地方'
+);
+
+const canGenerate = computed(
+  () => Boolean(courseType.value && topic.value && performance.value && studentName.value.trim())
 );
 
 // 月视图日历
@@ -581,7 +719,7 @@ function resetStyle() {
 }
 
 async function generate() {
-  if (!topic.value || !performance.value || !studentName.value.trim() || generating.value) return;
+  if (!canGenerate.value || generating.value) return;
   generating.value = true;
   result.value = '';
   errorMsg.value = '';
@@ -634,17 +772,8 @@ watch(courseType, () => {
   result.value = '';
   cppTrack.value = '';
   lessonIndex.value = '';
+  lessonQuery.value = '';
   loadStyle();
-});
-
-watch(cppTrack, () => {
-  lessonIndex.value = '';
-});
-
-watch(selectedLesson, (lesson) => {
-  if (lesson) {
-    topic.value = shortTopicName(lesson.name) || lesson.name;
-  }
 });
 
 onMounted(loadStyle);
@@ -895,11 +1024,117 @@ onMounted(loadStyle);
   box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
 }
 
+.course-type-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.course-type-btn {
+  flex: 1 1 100px;
+  min-width: 96px;
+  max-width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.course-type-btn:hover {
+  border-color: #60a5fa;
+  color: #1d4ed8;
+}
+
+.course-type-btn.active {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border-color: transparent;
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .course-type-btn {
+    flex: 1 1 calc(50% - 10px);
+    min-width: calc(50% - 10px);
+  }
+}
+
 .track-hint {
   margin: 0;
   color: #64748b;
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* 可搜索课程主题 */
+.lesson-picker {
+  position: relative;
+}
+
+.lesson-search {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.lesson-options {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  max-height: 280px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+  padding: 6px;
+}
+
+.lesson-options-empty {
+  margin: 0;
+  padding: 12px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.lesson-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lesson-option:hover,
+.lesson-option.active {
+  background: #eef2ff;
+}
+
+.lesson-option-title {
+  color: #1e293b;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lesson-option-name {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-all;
 }
 
 .lesson-objectives {

@@ -5,9 +5,10 @@ const { chatStream, relaySSE } = require('../services/ai');
 const router = express.Router();
 
 const COURSE_NAMES = Object.freeze({
+  l1: 'L1 课程',
   cpp: 'C++',
   robotics: '机器人',
-  graphical: '图形化编程',
+  graphical: '图形化',
   python: 'Python',
 });
 
@@ -16,6 +17,16 @@ const TRACK_NAMES = Object.freeze({
   algorithm: 'C++ 算法篇',
   'data-structure': 'C++ 数据结构篇',
   gesp: 'GESP 考级 1~4 级',
+  'graphical-basic': '图形化初级',
+  'snap-basic': 'Snap 初级',
+  'graphical-advanced': '图形化高级',
+  'wedo-q1': 'Wedo（Q1）',
+  'wedo-basic': 'Wedo 初级',
+  'wedo-mid': 'Wedo 中级',
+  'spike-basic': 'SPIKE 初级',
+  'spike-mid': 'SPIKE 中级',
+  'spike-advanced': 'SPIKE 高级',
+  'csai-advanced': 'CS & AI 高级',
   other: '其他',
 });
 
@@ -131,7 +142,7 @@ router.post('/generate', async (req, res) => {
 
   const courseType = courseTypeOf(requestedCourseType);
   const courseName = COURSE_NAMES[courseType];
-  const trackLabel = courseType === 'cpp' && TRACK_NAMES[cppTrack] ? TRACK_NAMES[cppTrack] : '';
+  const trackLabel = TRACK_NAMES[cppTrack] || '';
   const cleanObjectives = String(lessonObjectives || '').replace(/\s+/g, ' ').trim();
   const cleanLessonName = String(lessonName || '').trim();
 
@@ -200,12 +211,13 @@ ${styleRules}
 【输出格式硬性要求】（必须逐条遵守，格式错误视为不合格）：
 1. 每个字段单独成行；字段名后用全角冒号「：」，冒号后直接接内容，不要把多个字段挤在同一行。
 2. 「上课时间：」「✨上课主题：」「🎯课程目标：」「📌 课堂情况反馈」各占独立一行。
-3. 课程目标用「1、」「2、」编号（数字后是顿号「、」，不是英文点号），每条单独成行。
-4. 段落之间用空行分隔：开头问候语、上课时间/主题/目标、课堂情况反馈 三大块之间各空一行。
-5. 只保留「【课程知识点】：」「【课堂表现】：」两个小标题，各占独立一行，使用全角冒号「：」。绝不要输出「【后续建议】」。
-6. 课堂表现的每一条以「· 」（间隔号 + 空格）开头，单独成行；以肯定鼓励为主，需要提升的点温和地写在表现条目里。
-7. 正文中绝不出现数字题号，必须用上面给出的题目名称替换。
-8. 只输出课评正文本身，不要任何解释、前言或 markdown 代码块包裹。
+3. 「✨上课主题：」后面只能写教师提供的上课主题本身（如「餐厅新秀」）。绝对不要在主题前加课程类别、课程阶段、方向或「·」分段（禁止出现「机器人 ·」「CS & AI 高级 ·」「C++ ·」这类前缀）。
+4. 课程目标用「1、」「2、」编号（数字后是顿号「、」，不是英文点号），每条单独成行。
+5. 段落之间用空行分隔：开头问候语、上课时间/主题/目标、课堂情况反馈 三大块之间各空一行。
+6. 只保留「【课程知识点】：」「【课堂表现】：」两个小标题，各占独立一行，使用全角冒号「：」。绝不要输出「【后续建议】」。
+7. 课堂表现的每一条以「· 」（间隔号 + 空格）开头，单独成行；以肯定鼓励为主，需要提升的点温和地写在表现条目里。
+8. 正文中绝不出现数字题号，必须用上面给出的题目名称替换。
+9. 只输出课评正文本身，不要任何解释、前言或 markdown 代码块包裹。
 
 【参考范例】（请严格模仿它的换行与标点，不要照抄内容）：
 家长您好，以下是本次课堂内容分享：
@@ -221,7 +233,7 @@ ${styleRules}
 【课堂表现】：
 ${samplePerformance}
 
-现在请严格按上述格式输出本次课评正文。注意：「🎯课程目标」两条必须来自上方官方课程目标的压缩提炼；不要输出「【后续建议】」；整体以鼓励为主，emoji 适量即可。`;
+现在请严格按上述格式输出本次课评正文。注意：「✨上课主题：」只写主题短名本身，不要加课程类别或阶段前缀；「🎯课程目标」两条必须来自上方官方课程目标的压缩提炼；不要输出「【后续建议】」；整体以鼓励为主，emoji 适量即可。`;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
