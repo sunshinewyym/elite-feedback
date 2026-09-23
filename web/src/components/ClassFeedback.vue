@@ -913,7 +913,8 @@ onMounted(loadStyle);
 @media (max-width: 960px) {
   .feedback-page {
     height: auto;
-    overflow: auto;
+    min-height: 100vh;
+    overflow: visible;
   }
 
   .fb-shell {
@@ -930,10 +931,26 @@ onMounted(loadStyle);
 
   .fb-right {
     overflow: visible;
+    min-height: 0;
+  }
+
+  .fb-result {
+    min-height: 0;
+    flex: none;
+  }
+
+  .result-editor {
+    min-height: 55vh;
+    max-height: none;
+    resize: vertical;
   }
 
   .result-empty {
     min-height: 240px;
+  }
+
+  .result-toolbar {
+    flex-wrap: wrap;
   }
 }
 
@@ -1443,7 +1460,7 @@ onMounted(loadStyle);
   display: block;
   flex: 1;
   width: 100%;
-  min-height: 0;
+  min-height: 320px;
   margin: 0;
   padding: 20px;
   border: 0;
