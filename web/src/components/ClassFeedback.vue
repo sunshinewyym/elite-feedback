@@ -24,7 +24,7 @@
           <div class="fb-form">
         <div class="form-row">
           <label>课程类别</label>
-          <div class="course-type-row" role="tablist" aria-label="课程类别">
+          <div class="course-type-row course-type-row-primary" role="tablist" aria-label="课程类别">
             <button
               v-for="c in COURSE_OPTIONS"
               :key="c.id"
@@ -271,6 +271,7 @@ import { generateFeedback } from '../utils/stream.js';
 import { CPP_TRACKS, lessonsOfTrack, shortTopicName } from '../data/cppCourses.js';
 import { GRAPHICAL_TRACKS, graphicalLessonsOfTrack } from '../data/graphicalCourses.js';
 import { ROBOTICS_TRACKS, roboticsLessonsOfTrack } from '../data/roboticsCourses.js';
+import { MAKER_TRACKS, makerLessonsOfTrack } from '../data/makerCourses.js';
 import { PRESCHOOL_TRACKS, preschoolLessonsOfTrack } from '../data/preschoolCourses.js';
 import PythonFeedbackForm from './PythonFeedbackForm.vue';
 
@@ -279,6 +280,7 @@ const STYLE_STORAGE_PREFIX = 'class-feedback-style:';
 const COURSE_NAMES = {
   l1: '幼儿课程',
   robotics: '机器人',
+  maker: '创客',
   graphical: '图形化',
   python: 'Python',
   cpp: 'C++',
@@ -287,6 +289,7 @@ const COURSE_NAMES = {
 const COURSE_OPTIONS = [
   { id: 'l1', label: '幼儿课程' },
   { id: 'robotics', label: '机器人' },
+  { id: 'maker', label: '创客' },
   { id: 'graphical', label: '图形化' },
   { id: 'python', label: 'Python' },
   { id: 'cpp', label: 'C++' },
@@ -373,6 +376,7 @@ const stageTracks = computed(() => {
   if (courseType.value === 'cpp') return CPP_TRACKS;
   if (courseType.value === 'graphical') return GRAPHICAL_TRACKS;
   if (courseType.value === 'robotics') return ROBOTICS_TRACKS;
+  if (courseType.value === 'maker') return MAKER_TRACKS;
   if (courseType.value === 'l1') return PRESCHOOL_TRACKS;
   return [];
 });
@@ -381,12 +385,14 @@ const showTrackPicker = computed(
     courseType.value === 'cpp' ||
     courseType.value === 'graphical' ||
     courseType.value === 'robotics' ||
+    courseType.value === 'maker' ||
     courseType.value === 'l1'
 );
 const trackPickerLabel = computed(() => {
   if (courseType.value === 'cpp') return 'C++ 课程阶段';
   if (courseType.value === 'graphical') return '图形化课程阶段';
   if (courseType.value === 'robotics') return '机器人课程阶段';
+  if (courseType.value === 'maker') return '创客课程类别';
   if (courseType.value === 'l1') return '幼儿课程类别';
   return '课程阶段';
 });
@@ -396,6 +402,7 @@ const trackLessons = computed(() => {
   if (courseType.value === 'cpp') return lessonsOfTrack(cppTrack.value);
   if (courseType.value === 'graphical') return graphicalLessonsOfTrack(cppTrack.value);
   if (courseType.value === 'robotics') return roboticsLessonsOfTrack(cppTrack.value);
+  if (courseType.value === 'maker') return makerLessonsOfTrack(cppTrack.value);
   if (courseType.value === 'l1') return preschoolLessonsOfTrack(cppTrack.value);
   return [];
 });
@@ -604,6 +611,7 @@ const topicPlaceholder = computed(
       l1: '例如：认识顺序结构、趣味小项目',
       cpp: '例如：String 类、字符串应用',
       robotics: '例如：传感器与循线任务',
+      maker: '例如：AI 声控开关、魔法流水灯',
       graphical: '例如：角色运动与条件判断',
       python: '例如：列表与循环',
     })[courseType.value] || '请先选择课程类别'
@@ -1080,24 +1088,33 @@ onMounted(loadStyle);
 .course-type-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
+}
+
+.course-type-row-primary {
+  flex-wrap: nowrap;
 }
 
 .course-type-btn {
   flex: 1 1 100px;
-  min-width: 96px;
-  max-width: 100%;
-  padding: 12px 14px;
+  min-width: 88px;
+  padding: 10px 8px;
   border: 1px solid #d1d5db;
   border-radius: 10px;
   background: #fff;
   color: #334155;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   text-align: center;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.course-type-row-primary .course-type-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px 6px;
 }
 
 .course-type-btn:hover {
@@ -1112,9 +1129,12 @@ onMounted(loadStyle);
 }
 
 @media (max-width: 720px) {
-  .course-type-btn {
-    flex: 1 1 calc(50% - 10px);
-    min-width: calc(50% - 10px);
+  .course-type-row-primary {
+    flex-wrap: wrap;
+  }
+  .course-type-row-primary .course-type-btn {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
   }
 }
 

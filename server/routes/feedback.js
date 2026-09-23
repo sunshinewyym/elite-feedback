@@ -8,6 +8,7 @@ const COURSE_NAMES = Object.freeze({
   l1: '幼儿课程',
   cpp: 'C++',
   robotics: '机器人',
+  maker: '创客',
   graphical: '图形化',
   python: 'Python',
 });
@@ -27,6 +28,8 @@ const TRACK_NAMES = Object.freeze({
   'spike-mid': 'SPIKE 中级',
   'spike-advanced': 'SPIKE 高级',
   'csai-advanced': 'CS & AI 高级',
+  sdgs: 'SDGs 跨学科项目',
+  workshop: '智能工坊基础',
   'l1-k1': 'L1-K1',
   'l1-k2': 'L1-K2',
   'l1-k3': 'L1-K3',
