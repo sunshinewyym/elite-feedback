@@ -38,6 +38,9 @@
           </div>
         </div>
 
+        <PythonFeedbackForm v-if="courseType === 'python'" ref="pythonFormRef" @change="onPythonChange" />
+
+        <template v-else>
         <div v-if="showTrackPicker" class="form-row">
           <label>{{ trackPickerLabel }}</label>
           <div class="course-type-row" role="tablist" aria-label="课程阶段">
@@ -94,6 +97,7 @@
             </div>
           </div>
           <p v-if="selectedLesson" class="track-hint">已选：{{ selectedLesson.index }}. {{ shortTopicName(selectedLesson.name) }}</p>
+          <p v-else-if="!trackLessons.length" class="track-hint">该类别暂无课表，请在「上课主题」中直接填写。</p>
         </div>
 
         <section v-if="selectedLesson" class="lesson-objectives">
@@ -154,6 +158,7 @@
           <label>课堂表现</label>
           <textarea v-model="performance" rows="6" :placeholder="performancePlaceholder"></textarea>
         </div>
+        </template>
 
         <div class="form-row">
           <label>课堂图片 <span class="optional-tag">（可选，导出图文课评时用）</span></label>
@@ -266,11 +271,13 @@ import { generateFeedback } from '../utils/stream.js';
 import { CPP_TRACKS, lessonsOfTrack, shortTopicName } from '../data/cppCourses.js';
 import { GRAPHICAL_TRACKS, graphicalLessonsOfTrack } from '../data/graphicalCourses.js';
 import { ROBOTICS_TRACKS, roboticsLessonsOfTrack } from '../data/roboticsCourses.js';
+import { PRESCHOOL_TRACKS, preschoolLessonsOfTrack } from '../data/preschoolCourses.js';
+import PythonFeedbackForm from './PythonFeedbackForm.vue';
 
 const STYLE_STORAGE_PREFIX = 'class-feedback-style:';
 
 const COURSE_NAMES = {
-  l1: 'L1 课程',
+  l1: '幼儿课程',
   robotics: '机器人',
   graphical: '图形化',
   python: 'Python',
@@ -278,7 +285,7 @@ const COURSE_NAMES = {
 };
 
 const COURSE_OPTIONS = [
-  { id: 'l1', label: 'L1 课程' },
+  { id: 'l1', label: '幼儿课程' },
   { id: 'robotics', label: '机器人' },
   { id: 'graphical', label: '图形化' },
   { id: 'python', label: 'Python' },
@@ -366,15 +373,21 @@ const stageTracks = computed(() => {
   if (courseType.value === 'cpp') return CPP_TRACKS;
   if (courseType.value === 'graphical') return GRAPHICAL_TRACKS;
   if (courseType.value === 'robotics') return ROBOTICS_TRACKS;
+  if (courseType.value === 'l1') return PRESCHOOL_TRACKS;
   return [];
 });
 const showTrackPicker = computed(
-  () => courseType.value === 'cpp' || courseType.value === 'graphical' || courseType.value === 'robotics'
+  () =>
+    courseType.value === 'cpp' ||
+    courseType.value === 'graphical' ||
+    courseType.value === 'robotics' ||
+    courseType.value === 'l1'
 );
 const trackPickerLabel = computed(() => {
   if (courseType.value === 'cpp') return 'C++ 课程阶段';
   if (courseType.value === 'graphical') return '图形化课程阶段';
   if (courseType.value === 'robotics') return '机器人课程阶段';
+  if (courseType.value === 'l1') return '幼儿课程类别';
   return '课程阶段';
 });
 const currentTrack = computed(() => stageTracks.value.find((t) => t.id === cppTrack.value) || null);
@@ -383,12 +396,13 @@ const trackLessons = computed(() => {
   if (courseType.value === 'cpp') return lessonsOfTrack(cppTrack.value);
   if (courseType.value === 'graphical') return graphicalLessonsOfTrack(cppTrack.value);
   if (courseType.value === 'robotics') return roboticsLessonsOfTrack(cppTrack.value);
+  if (courseType.value === 'l1') return preschoolLessonsOfTrack(cppTrack.value);
   return [];
 });
 const selectedLesson = computed(() => {
   if (!cppTrack.value || cppTrack.value === 'other' || lessonIndex.value === '' || lessonIndex.value === null) return null;
-  const idx = Number(lessonIndex.value);
-  return trackLessons.value.find((les) => les.index === idx) || null;
+  const key = String(lessonIndex.value);
+  return trackLessons.value.find((les) => String(les.index) === key) || null;
 });
 
 // 课程主题搜索
@@ -451,7 +465,11 @@ watch(selectedLesson, (lesson) => {
 });
 
 function formatObjectives(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/(?=知识目标：|技能目标：|情感目标：)/g, '\n')
+    .trim();
 }
 
 function loadImageFile(file) {
@@ -593,13 +611,23 @@ const topicPlaceholder = computed(
 
 const performancePlaceholder = computed(() =>
   courseType.value === 'cpp'
-    ? '描述学生表现，例如：思路清晰、能独立完成练习、遇到困难时如何处理'
-    : '描述课堂上实际观察到的操作、思考、合作及需要改进的地方'
+    ? '简单描述学生表现，例如：思路清晰、能独立完成练习、遇到困难时如何处理'
+    : '简单描述课堂上实际观察到的操作、思考、合作及需要改进的地方'
 );
 
-const canGenerate = computed(
-  () => Boolean(courseType.value && topic.value && performance.value && studentName.value.trim())
-);
+const canGenerate = computed(() => {
+  if (courseType.value === 'python') {
+    return Boolean(pythonPayload.value?.lesson_title && (pythonPayload.value?.performance_material || pythonPayload.value?.detail));
+  }
+  return Boolean(courseType.value && topic.value && performance.value && studentName.value.trim());
+});
+
+const pythonPayload = ref(null);
+const pythonFormRef = ref(null);
+
+function onPythonChange(payload) {
+  pythonPayload.value = payload;
+}
 
 // 月视图日历
 const showCalendar = ref(false);
@@ -725,20 +753,28 @@ async function generate() {
   errorMsg.value = '';
   copied.value = false;
   try {
+    const body =
+      courseType.value === 'python'
+        ? {
+            ...(pythonFormRef.value?.buildPayload() || pythonPayload.value || {}),
+            style: styleText.value,
+          }
+        : {
+            course_type: courseType.value,
+            template: courseType.value === 'l1' ? 'preschool' : 'standard',
+            cpp_track: cppTrack.value || '',
+            lesson_name: selectedLesson.value?.name || '',
+            lesson_objectives: selectedLesson.value?.objectives || '',
+            date: dateDisplay.value,
+            date_key: dateKey.value,
+            student_name: studentName.value.trim(),
+            topic: topic.value,
+            problemIds: problemIds.value,
+            performance: performance.value,
+            style: styleText.value,
+          };
     await generateFeedback(
-      {
-        course_type: courseType.value,
-        cpp_track: cppTrack.value || '',
-        lesson_name: selectedLesson.value?.name || '',
-        lesson_objectives: selectedLesson.value?.objectives || '',
-        date: dateDisplay.value,
-        date_key: dateKey.value,
-        student_name: studentName.value.trim(),
-        topic: topic.value,
-        problemIds: problemIds.value,
-        performance: performance.value,
-        style: styleText.value,
-      },
+      body,
       (chunk) => {
         result.value += chunk;
       },

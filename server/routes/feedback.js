@@ -5,7 +5,7 @@ const { chatStream, relaySSE } = require('../services/ai');
 const router = express.Router();
 
 const COURSE_NAMES = Object.freeze({
-  l1: 'L1 课程',
+  l1: '幼儿课程',
   cpp: 'C++',
   robotics: '机器人',
   graphical: '图形化',
@@ -27,6 +27,9 @@ const TRACK_NAMES = Object.freeze({
   'spike-mid': 'SPIKE 中级',
   'spike-advanced': 'SPIKE 高级',
   'csai-advanced': 'CS & AI 高级',
+  'l1-k1': 'L1-K1',
+  'l1-k2': 'L1-K2',
+  'l1-k3': 'L1-K3',
   other: '其他',
 });
 
@@ -121,8 +124,207 @@ router.get('/problem-title', async (req, res) => {
   res.json({ id, title });
 });
 
+function startSSE(res) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+}
+
+async function streamChatOrError(res, messages, options) {
+  try {
+    const response = await chatStream(messages, options);
+    relaySSE(response.data, res);
+  } catch (err) {
+    const message =
+      err.code === 'AI_NOT_CONFIGURED'
+        ? '服务器未配置 AI API Key，请在 .env 中设置 DEEPSEEK_API_KEY 或 AI_API_KEY'
+        : 'AI 服务暂时不可用';
+    res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+    res.end();
+  }
+}
+
+function generatePythonLabFeedback(req, res, body) {
+  const {
+    stage = 'L5',
+    lesson_number: lessonNumber = 1,
+    lesson_title: lessonTitle = '',
+    duration = 90,
+    goals = [],
+    topics = [],
+    student_name: studentName = '',
+    date = '',
+    exam_lines: examLines = [],
+    standard_lines: standardLines = [],
+    performance_material: performanceMaterial = '',
+    behavior_labels: behaviorLabels = [],
+    strength_labels: strengthLabels = [],
+    detail = '',
+    next_goal: nextGoal = '',
+    use_emoji: useEmoji = true,
+  } = body;
+
+  if (!lessonTitle) {
+    return res.status(400).json({ error: '请先选择课程' });
+  }
+
+  const name = String(studentName || '').trim();
+  const displayDate = String(date || '').trim();
+  const icon = (t) => (useEmoji ? t + ' ' : t);
+  const goalsText = goals
+    .map((g, i) => `${i + 1}. ${String(g).replace(/^\s*\d+[.．、]\s*/, '').replace(/[；;。]+$/, '')}。`)
+    .join('\n');
+  const topicsText = topics.join('；') + '。';
+  const examText = examLines.length ? examLines.join('\n') : '';
+  const standardText = standardLines.length ? standardLines.join('\n') : '';
+  const behaviorText = behaviorLabels.length ? behaviorLabels.join('；') : '（未记录）';
+  const strengthText = strengthLabels.length ? strengthLabels.join('、') : '（无）';
+  const performanceText = performanceMaterial || '（未选择课堂表现）';
+
+  const prompt = `你是少儿 Python 课的老师，要为家长输出一份「Python 课后反馈」。请严格按照下方结构输出正文，不要自行编造未提供的学习事实。
+
+【固定输出结构】（逐字遵守段落顺序与标题）：
+${icon('🌟')}Python 课后反馈
+${stage} · 第 ${lessonNumber} 课《${lessonTitle}》
+${name ? `学生：${name} ｜ ` : ''}${displayDate ? `日期：${displayDate} ｜ ` : ''}${duration || 90} 分钟
+
+家长您好！今天${name || '孩子'}参加了《${lessonTitle}》的学习，和您分享本节课的学习内容与课堂表现。
+
+${icon('🎯')}【课程目标】
+${goalsText}
+
+${icon('🧩')}【本课知识点】
+${topicsText}
+${examText ? `\n${icon('📚')}【对应考级知识点】\n${examText}` : ''}
+${standardText ? `\n${icon('🧭')}【对应课程标准】\n${standardText}` : ''}
+
+${icon('🌱')}【课堂表现】
+（下面给出的是本次课堂观察素材，请你**重新撰写**一段亲切连贯的正文，不要逐字照抄素材句；同一批素材也要用自然的变化表达，避免每次生成一字不差。以鼓励为主；不要输出「【后续建议】」；结尾加一句鼓励）
+课堂观察记录：${behaviorText}
+值得点赞：${strengthText}
+具体瞬间：${detail || '无'}
+可参考的语气（学习改写，不要原文照搬）：${performanceText}
+${nextGoal ? `\n${icon('🚀')}【下一步的小目标】\n${nextGoal}` : ''}
+
+【硬性要求】
+1. 标题行按是否使用表情符号输出「🌟 Python 课后反馈」或「Python 课后反馈」。
+2. 第二行严格为「${stage} · 第 ${lessonNumber} 课《${lessonTitle}》」，不要加其他前缀。
+3. 课程目标使用上面给出的条目，不要增删条数。
+4. 本课知识点用「；」连接提供的 topics。
+5. 对应考级知识点、对应课程标准使用提供的条目原样输出；未提供则整段不要出现。
+6. 课堂表现必须由你根据「课堂观察记录」原创撰写一段话（禁止照抄参考语气原文）；可轻微换序、换词、合并语义；不要凭空添加未记录的新事件。
+7. 同一素材再次生成时，句式和用词应有自然差异。
+8. 不要输出解释、前言或 markdown 代码块。
+
+现在输出完整课评正文：`;
+
+  startSSE(res);
+  return streamChatOrError(
+    res,
+    [
+      {
+        role: 'system',
+        content:
+          '你是温和专业的少儿 Python 老师。输出面向家长的课后反馈，严格保持标题、分段与【】小标题格式，以鼓励表扬为主。',
+      },
+      { role: 'user', content: prompt },
+    ],
+    { temperature: 0.85, max_tokens: 1600 }
+  );
+}
+
+function generatePreschoolFeedback(req, res, body) {
+  const {
+    student_name: studentName = '',
+    date = '',
+    topic = '',
+    lesson_name: lessonName = '',
+    lesson_objectives: lessonObjectives = '',
+    performance = '',
+  } = body;
+  if (!topic) {
+    return res.status(400).json({ error: '请填写上课主题' });
+  }
+  const name = String(studentName || '').trim() || '宝贝';
+  const objectives = String(lessonObjectives || '').replace(/\s+/g, ' ').trim();
+  const theme = String(lessonName || topic || '').trim();
+
+  const prompt = `你是幼儿积木/编程课老师，要给家长写一份活泼亲切的课后反馈。严格按下面格式输出，语气可爱、多鼓励，适合幼儿家长阅读。
+
+【输出格式范例】（模仿结构与换行，不要照抄人名和具体内容）：
+${name}宝贝的课程反馈来啦~
+
+✨ 🎉 ✨ 🎉
+
+课程目标:
+1、了解金币加油站基本组成结构，掌握曲柄滑块机构工作原理
+2、运用曲柄、孔梁等零件搭建曲柄滑块机构，实现往复运动
+3、在搭建与游戏中收获动手满足感，练习数学加法运算
+
+课程内容:
+· 本次主题：……
+· 知识讲解：……
+· 搭建实践：……
+· 游戏延展：……
+
+学生表现
+🌞 表现突出的点
+· ……
+· ……
+· ……
+
+💪 需要提升的点
+· ……
+· 后续老师会重点帮助：……
+
+继续加油，${name}！多来上课，你一定会越来越厉害！
+
+【本次素材】
+- 学生称呼：${name}
+- 上课时间：${date || '今天'}
+- 本次主题：${theme}
+- 课程目标原文（可能含「知识目标：」「技能目标：」「情感目标：」等前缀，请提炼）：
+${objectives || '（未提供，请根据主题合理概括 2-3 条）'}
+- 老师观察记录：
+${performance || '（未填写）'}
+
+【硬性要求】
+1. 开头必须是「${name}宝贝的课程反馈来啦~」，空一行后一行装饰「✨ 🎉 ✨ 🎉」。
+2. 「课程目标:」必须从上方「课程目标原文」提炼精简成 2-3 条（通常 3 条），每条以全角数字顿号「1、」「2、」「3、」开头；去掉「知识目标：」「技能目标：」「情感目标：」等标签，合并同类内容，每条不超过 25 字，动词开头更佳。不要照抄冗长原文，也不要编造与原文无关的目标。
+3. 「课程内容:」固定四条「· 本次主题 / 知识讲解 / 搭建实践 / 游戏延展」，根据主题与提炼后的目标概括，不要编造离谱细节。
+4. 「学生表现」下分「🌞 表现突出的点」和「💪 需要提升的点」两块；把老师观察记录拆进对应小节，各 2-3 条；每条以「· 」开头。
+5. 表现以鼓励为主；提升点用温和口吻，并尽量有一条「后续老师会重点帮助：……」。
+6. 结尾固定一句：「继续加油，${name}！多来上课，你一定会越来越厉害！」
+7. 「✨上课主题：」这类前缀不要出现；主题写在「· 本次主题：」里即可。
+8. 不要输出解释、markdown 代码块或多余标题。
+
+现在输出完整课评正文：`;
+
+  startSSE(res);
+  return streamChatOrError(
+    res,
+    [
+      {
+        role: 'system',
+        content: '你是温柔活泼的幼儿课老师，写给家长的课后反馈要亲切可爱、条理清楚、以表扬鼓励为主。',
+      },
+      { role: 'user', content: prompt },
+    ],
+    { temperature: 0.8, max_tokens: 1400 }
+  );
+}
+
 // 生成课后反馈（SSE 流式）
 router.post('/generate', async (req, res) => {
+  const body = req.body || {};
+  if (body.template === 'python-lab') {
+    return generatePythonLabFeedback(req, res, body);
+  }
+  if (body.template === 'preschool') {
+    return generatePreschoolFeedback(req, res, body);
+  }
+
   const {
     course_type: requestedCourseType,
     cpp_track: cppTrack,
@@ -134,7 +336,7 @@ router.post('/generate', async (req, res) => {
     problemIds,
     performance,
     style,
-  } = req.body || {};
+  } = body;
 
   if (!topic || !performance) {
     return res.status(400).json({ error: '请填写上课主题和课堂表现' });
