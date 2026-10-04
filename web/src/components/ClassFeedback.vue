@@ -258,7 +258,6 @@
             <img v-for="img in images" :key="img.id" :src="img.dataUrl" :alt="img.name" />
           </div>
         </section>
-        <footer class="export-card-foot">课后反馈 · 用心看见每一点成长</footer>
       </div>
     </div>
   </div>
