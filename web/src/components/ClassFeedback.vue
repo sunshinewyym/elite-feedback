@@ -492,19 +492,34 @@ function loadImageFile(file) {
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        // 压缩到最长边 1600，避免导出图过大
+        // 统一裁成 4:3（居中裁切），导出时不再依赖 object-fit，避免 html2canvas 拉伸变形
+        const targetRatio = 4 / 3;
         const maxSide = 1600;
-        let { width, height } = img;
-        if (Math.max(width, height) > maxSide) {
-          const scale = maxSide / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
+        let srcW = img.width;
+        let srcH = img.height;
+        let sx = 0;
+        let sy = 0;
+        if (srcW / srcH > targetRatio) {
+          // 太宽：左右裁
+          srcW = Math.round(srcH * targetRatio);
+          sx = Math.round((img.width - srcW) / 2);
+        } else {
+          // 太高：上下裁
+          srcH = Math.round(srcW / targetRatio);
+          sy = Math.round((img.height - srcH) / 2);
+        }
+        let outW = srcW;
+        let outH = srcH;
+        if (Math.max(outW, outH) > maxSide) {
+          const s = maxSide / Math.max(outW, outH);
+          outW = Math.round(outW * s);
+          outH = Math.round(outH * s);
         }
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = outW;
+        canvas.height = outH;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.drawImage(img, sx, sy, srcW, srcH, 0, 0, outW, outH);
         resolve({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           name: file.name,
@@ -1675,10 +1690,9 @@ onMounted(loadStyle);
 
 .export-gallery-grid img {
   width: 100%;
-  aspect-ratio: 4 / 3;
-  object-fit: cover;
-  border-radius: 10px;
+  height: auto;
   display: block;
+  border-radius: 10px;
   background: #f1f5f9;
 }
 
