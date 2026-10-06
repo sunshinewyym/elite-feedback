@@ -188,6 +188,7 @@
           <div v-if="images.length" class="image-grid">
             <div v-for="(img, i) in images" :key="img.id" class="image-thumb">
               <img :src="img.dataUrl" :alt="img.name" />
+              <span class="image-tag">{{ img.orientation === 'portrait' ? '竖' : '横' }}</span>
               <button type="button" class="image-remove" title="移除" @click="removeImage(i)">×</button>
             </div>
           </div>
@@ -254,9 +255,16 @@
         <article class="export-card-body">{{ result }}</article>
         <section v-if="images.length" class="export-card-gallery">
           <div class="export-gallery-title">📷 课堂记录</div>
-          <div class="export-gallery-grid">
-            <img v-for="img in images" :key="img.id" :src="img.dataUrl" :alt="img.name" />
-          </div>
+          <template v-if="exportLandscapeImages.length">
+            <div class="export-gallery-grid landscape">
+              <img v-for="img in exportLandscapeImages" :key="img.id" :src="img.dataUrl" :alt="img.name" />
+            </div>
+          </template>
+          <template v-if="exportPortraitImages.length">
+            <div class="export-gallery-grid portrait">
+              <img v-for="img in exportPortraitImages" :key="img.id" :src="img.dataUrl" :alt="img.name" />
+            </div>
+          </template>
         </section>
       </div>
     </div>
@@ -362,6 +370,9 @@ const fileInput = ref(null);
 const imageMsg = ref('');
 const exporting = ref(false);
 const exportCardEl = ref(null);
+
+const exportLandscapeImages = computed(() => images.value.filter((img) => img.orientation !== 'portrait'));
+const exportPortraitImages = computed(() => images.value.filter((img) => img.orientation === 'portrait'));
 
 const courseLabel = computed(() => {
   const base = COURSE_NAMES[courseType.value] || '课后反馈';
@@ -492,19 +503,23 @@ function loadImageFile(file) {
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        // 统一裁成 4:3（居中裁切），导出时不再依赖 object-fit，避免 html2canvas 拉伸变形
-        const targetRatio = 4 / 3;
         const maxSide = 1600;
+        const isPortrait = img.height > img.width * 1.05;
+        const isLandscape = img.width > img.height * 1.05;
+        const orientation = isPortrait ? 'portrait' : isLandscape ? 'landscape' : 'square';
+        // 横图统一 16:10，竖图统一 3:4，方图 1:1 — 便于网格等高排布且 html2canvas 不变形
+        let targetRatio = 1;
+        if (orientation === 'landscape') targetRatio = 16 / 10;
+        else if (orientation === 'portrait') targetRatio = 3 / 4;
+
         let srcW = img.width;
         let srcH = img.height;
         let sx = 0;
         let sy = 0;
         if (srcW / srcH > targetRatio) {
-          // 太宽：左右裁
           srcW = Math.round(srcH * targetRatio);
           sx = Math.round((img.width - srcW) / 2);
-        } else {
-          // 太高：上下裁
+        } else if (srcW / srcH < targetRatio) {
           srcH = Math.round(srcW / targetRatio);
           sy = Math.round((img.height - srcH) / 2);
         }
@@ -519,10 +534,13 @@ function loadImageFile(file) {
         canvas.width = outW;
         canvas.height = outH;
         const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, outW, outH);
         ctx.drawImage(img, sx, sy, srcW, srcH, 0, 0, outW, outH);
         resolve({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           name: file.name,
+          orientation: orientation === 'square' ? 'landscape' : orientation,
           dataUrl: canvas.toDataURL('image/jpeg', 0.88),
         });
       };
@@ -1576,6 +1594,19 @@ onMounted(loadStyle);
   display: block;
 }
 
+.image-tag {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.55);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
 .image-remove {
   position: absolute;
   top: 4px;
@@ -1684,11 +1715,19 @@ onMounted(loadStyle);
 
 .export-gallery-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
 
-.export-gallery-grid img {
+.export-gallery-grid.landscape {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.export-gallery-grid.portrait {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.export-gallery-grid.landscape img,
+.export-gallery-grid.portrait img {
   width: 100%;
   height: auto;
   display: block;
